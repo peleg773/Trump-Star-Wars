@@ -117,7 +117,7 @@ html, body {
   color: #4bd5ee;
   font-family: 'News Cycle', sans-serif;
   font-weight: 400;
-  font-size: clamp(1.1rem, 2.8vw, 2rem);
+  font-size: clamp(1.2rem, 3vw, 2.2rem);
   line-height: 1.4;
   opacity: 0;
 }
@@ -547,7 +547,7 @@ html, body {
 
   #tagline {
     width: 88%;
-    font-size: clamp(1rem, 4.6vw, 1.6rem);
+    font-size: clamp(1.1rem, 5vw, 1.75rem);
     line-height: 1.35;
   }
 
