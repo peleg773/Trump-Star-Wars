@@ -7,11 +7,16 @@
 html, body {
   width: 100%;
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   background: #000;
   color: #feda4a;
   font-family: 'News Cycle', 'Arial Narrow', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Touch surfaces drive the crawl scrub manually; block native pan/zoom. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ---------- Starfield (one element, hundreds of stars via box-shadow) ---------- */
@@ -75,9 +80,11 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 1rem;
+  text-align: center;
   font-family: 'News Cycle', sans-serif;
-  font-size: clamp(1rem, 2.5vw, 1.6rem);
-  letter-spacing: 0.4em;
+  font-size: clamp(0.85rem, 2.5vw, 1.6rem);
+  letter-spacing: clamp(0.15em, 0.4vw, 0.4em);
   color: #feda4a;
   z-index: 100;
   animation: pulse 1.6s ease-in-out infinite;
@@ -129,17 +136,27 @@ html, body {
   width: min(82vw, 820px);
   height: auto;
   opacity: 0;
-  transform: scale(1.9);
+  transform: scale(7);
   transform-origin: center center;
   filter: drop-shadow(0 0 30px rgba(254, 218, 74, 0.25));
+  will-change: transform, opacity;
 }
+/* Two parallel animations: a continuous monotonic recession on transform
+   (no holds, no kinks) plus a late opacity fade at the very end. This
+   eliminates the "pause–move–pause" look you get when scale and opacity
+   share keyframes with hold beats. */
 #logo.play {
-  animation: logo-zoom 6s linear forwards;
+  animation:
+    logo-recede 7.5s cubic-bezier(0.25, 0.55, 0.25, 1) forwards,
+    logo-fade   7.5s linear forwards;
 }
-@keyframes logo-zoom {
-  0%   { opacity: 1; transform: scale(1.9); }
-  88%  { opacity: 1; transform: scale(0.18); }
-  100% { opacity: 0; transform: scale(0.08); }
+@keyframes logo-recede {
+  0%   { transform: scale(7); }
+  100% { transform: scale(0.04); }
+}
+@keyframes logo-fade {
+  0%, 92% { opacity: 1; }
+  100%    { opacity: 0; }
 }
 
 /* ---------- Crawl ---------- */
@@ -149,7 +166,9 @@ html, body {
   inset: 0;
   z-index: 10;
   overflow: hidden;
-  perspective: 650px;
+  /* Perspective scales with viewport height so the tilt reads the same
+     way on tall desktops and short phones. */
+  perspective: clamp(420px, 60vh, 700px);
   perspective-origin: 50% 100%;
   /* Fade text into the void as it recedes */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 100%);
@@ -157,14 +176,18 @@ html, body {
 }
 #crawl-viewport.hidden { display: none; }
 
+/* One unified ruleset for the crawl on every screen — width, type, line
+   height, letter-spacing and the gap between posts are all viewport-
+   relative, so the proportions of a post look the same on a phone and a
+   1440p monitor. */
 #crawl,
 .crawl-measure {
   position: absolute;
   left: 50%;
-  width: min(86vw, 920px);
+  width: min(88vw, 920px);
   color: #feda4a;
   font-family: 'Pathway Gothic One', 'News Cycle', sans-serif;
-  font-size: clamp(1.35rem, 3vw, 2.9rem);
+  font-size: clamp(1.4rem, 3.4vw, 2.8rem);
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.04em;
@@ -172,7 +195,11 @@ html, body {
 }
 
 #crawl {
-  top: 112vh;
+  /* 105dvh keeps the "rising from below" feel but means the first line
+     enters the viewport within ~1 s on any screen height, which lines up
+     with the logo's final recession beat. */
+  top: 105vh;
+  top: 105dvh;
   transform-origin: 50% 0%;
   transform: translateX(-50%) rotateX(25deg);
   will-change: transform;
@@ -191,19 +218,29 @@ html, body {
 
 .post {
   display: flow-root;
-  margin-bottom: 30vh;
+  margin-bottom: 25vh;
+  margin-bottom: 25dvh;
   text-align: center;
   -webkit-user-select: text;
           user-select: text;
 }
 
 .post .episode {
+  display: block;
   text-align: center;
   font-style: italic;
   font-weight: 400;
   font-size: 0.7em;
   letter-spacing: 0.18em;
   margin-bottom: 0.5em;
+  color: inherit;
+  text-decoration: none;
+}
+.post a.episode:hover,
+.post a.episode:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  outline: none;
 }
 
 .post .title {
@@ -243,7 +280,7 @@ html, body {
   margin-top: 1.2em;
   display: grid;
   gap: 0.6em;
-  width: min(70%, 620px);
+  width: min(72%, 620px);
   margin-left: auto;
   margin-right: auto;
   border-radius: 12px;
@@ -300,38 +337,222 @@ html, body {
   opacity: 0.85;
 }
 
+/* ---------- Footer ---------- */
+
+/* The footer is a span across the bottom — its two sections are positioned
+   at opposite ends. Pointer events are off on the wrapper so the empty
+   middle stays click-through to the crawl. */
+#site-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Above the crawl (z=10), below the intro layer (z=50), so the giant
+     logo paints over it during its climax and reveals it as it recedes. */
+  z-index: 40;
+  pointer-events: none;
+  font-family: 'News Cycle', sans-serif;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: rgba(254, 218, 74, 0.6);
+  transition: color 0.2s ease;
+}
+
+.footer-toggle {
+  display: none; /* shown only on mobile */
+}
+
+.footer-panel {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding:
+    0
+    max(2rem, env(safe-area-inset-right))
+    max(0.85rem, env(safe-area-inset-bottom))
+    max(0.9rem, env(safe-area-inset-left));
+}
+
+.footer-section {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.footer-left  { justify-content: flex-start; }
+.footer-right { justify-content: flex-end; text-align: right; }
+
+#site-footer a {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  transition: color 0.2s ease;
+}
+
+#site-footer a:hover,
+#site-footer a:focus-visible {
+  color: rgba(254, 218, 74, 1);
+  outline: none;
+}
+
+#site-footer .footer-link svg {
+  width: 1.5em;
+  height: 1.5em;
+  flex: none;
+  display: block;
+}
+
+/* Match the © glyph in the copyright line to the GitHub icon visually. */
+#site-footer .copyright {
+  display: inline-flex;
+  align-items: baseline;
+}
+#site-footer .copyright-mark {
+  font-size: 1.45em;
+  font-weight: 700;
+  line-height: 1;
+  /* Baseline alignment puts the bigger glyph riding above the rest;
+     a tiny downward shift centers it visually with the GitHub icon. */
+  transform: translateY(0.08em);
+}
+
+#site-footer .credit a {
+  white-space: nowrap;
+}
+
+/* ---------- Mobile collapsed footer ---------- */
+
 @media (max-width: 640px) {
+  /* The footer becomes a small © tab on the bottom-left. Tap to reveal a
+     panel that holds the full credit text. The panel has a solid backdrop
+     so the crawl behind it can't bleed through. */
+
+  #site-footer {
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+  }
+
+  .footer-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: max(0.55rem, env(safe-area-inset-bottom));
+    left: max(0.55rem, env(safe-area-inset-left));
+    width: 2.4rem;
+    height: 2.4rem;
+    padding: 0;
+    border: 1px solid rgba(254, 218, 74, 0.45);
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.7);
+    color: rgba(254, 218, 74, 0.8);
+    font: inherit;
+    font-size: 1.55rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 42;
+    /* The © glyph itself shouldn't be a text-selection target. */
+    -webkit-user-select: none;
+            user-select: none;
+    -webkit-touch-callout: none;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .footer-toggle span { pointer-events: none; }
+
+  .footer-toggle:hover,
+  .footer-toggle:focus-visible,
+  #site-footer.expanded .footer-toggle {
+    background: rgba(0, 0, 0, 0.85);
+    color: rgba(254, 218, 74, 1);
+    border-color: rgba(254, 218, 74, 0.85);
+    outline: none;
+  }
+
+  .footer-panel {
+    /* Hidden by default — collapsed into the toggle tab. */
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.55rem;
+    position: fixed;
+    bottom: calc(max(0.55rem, env(safe-area-inset-bottom)) + 2.6rem);
+    left: max(0.55rem, env(safe-area-inset-left));
+    right: auto;
+    max-width: min(82vw, 340px);
+    padding: 0.7rem 0.9rem;
+    background: rgba(0, 0, 0, 0.92);
+    border: 1px solid rgba(254, 218, 74, 0.35);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    z-index: 41;
+    pointer-events: auto;
+  }
+
+  #site-footer.expanded .footer-panel {
+    display: flex;
+    animation: footer-panel-pop 160ms ease-out;
+  }
+
+  @keyframes footer-panel-pop {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .footer-section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.45rem;
+    text-align: left;
+  }
+  .footer-right { text-align: left; }
+
+  #site-footer .footer-link svg {
+    width: 1.35em;
+    height: 1.35em;
+  }
+
+  /* Logo + crawl tweaks for narrow viewports. The crawl itself uses the
+     same global rule (fluid clamp) so its proportions track the desktop;
+     only the surrounding chrome adjusts. */
   #logo {
-    width: min(96vw, 640px);
+    width: min(92vw, 640px);
   }
 
-  #crawl {
-    top: 112vh;
-    width: min(92vw, 920px);
-    font-size: clamp(1.25rem, 7vw, 2.25rem);
-    line-height: 1.3;
+  #tagline {
+    width: 88%;
+    font-size: clamp(1rem, 4.6vw, 1.6rem);
+    line-height: 1.35;
   }
 
-  .post {
-    margin-bottom: 9vh;
+  .end-card {
+    letter-spacing: 0.28em;
   }
+}
 
-  .post .episode,
-  .post .title {
-    text-align: center;
+@media (max-width: 380px) {
+  .footer-panel {
+    max-width: calc(100vw - 1.2rem);
   }
+}
 
-  .post .body {
-    text-align: center;
-  }
+@media (max-height: 480px) and (orientation: landscape) {
+  /* Short landscape phones: keep the logo and tagline from crowding. The
+     crawl itself still uses the shared fluid rule so it stays consistent. */
+  #logo  { width: min(60vw, 520px); }
+  #tagline { font-size: clamp(0.95rem, 2.6vw, 1.4rem); }
 
-  .post .media-grid {
-    width: min(86%, 520px);
-  }
-
-  .crawl-measure {
-    width: min(92vw, 920px);
-    font-size: clamp(1.25rem, 7vw, 2.25rem);
-    line-height: 1.3;
+  /* Expanded panel might run out of vertical room — anchor it slightly
+     differently so it stays on screen. */
+  #site-footer.expanded .footer-panel {
+    bottom: calc(max(0.4rem, env(safe-area-inset-bottom)) + 2.4rem);
+    max-width: min(70vw, 380px);
   }
 }

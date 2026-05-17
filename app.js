@@ -10,15 +10,24 @@ const RENDER_AHEAD_VIEWPORTS = 7;
 const WHEEL_DELTA_STEP_PX = 110;
 const WHEEL_MAX_STEPS = 3;
 const WHEEL_JUMP_VIEWPORTS = 0.07;
+const TOUCH_DRAG_GAIN = 1.4;       // finger-pixel → crawl-pixel multiplier
+const TOUCH_FLICK_MAX_PX_S = 4200; // cap on flick momentum velocity
+const TOUCH_FLICK_DECAY = 4.5;     // momentum decay rate per second
+const TOUCH_FLICK_MIN_VELOCITY = 40;
 const MIN_TEXT_CHARS   = 1;
 const MAX_IMAGES       = 4;
 const FETCH_TIMEOUT_MS = 12000;
 const EMBED_REMOTE_IMAGES = false;
 
 const INTRO_TAGLINE_MS = 5000;
-const INTRO_LOGO_MS    = 6000;
+const INTRO_LOGO_MS    = 7500;
 const INTRO_GAP_MS     = 300;
-const CRAWL_LOGO_OVERLAP_MS = 5000;
+// The crawl element appears partway through the logo recession so the
+// text has time to actually travel into the viewport from below. The
+// 12vh starting offset (see CSS) plus the constant 55 px/s climb means
+// the first line takes ~1–2 s to clear the screen edge depending on
+// viewport height; we need that lead time to baked into the overlap.
+const CRAWL_LOGO_OVERLAP_MS = 3500;
 
 const TAGLINE = 'Not a long time ago, in a galaxy not far, far away...';
 
@@ -192,6 +201,7 @@ async function fetchAndPrepare() {
 
     out.push({
       id: r.id,
+      url: typeof r.url === 'string' && r.url ? r.url : '',
       dateLine: formatDateLine(r.created_at),
       body: text,
       sentences: splitSentences(text),
@@ -210,9 +220,14 @@ function makePostEl(post) {
   const section = document.createElement('section');
   section.className = 'post';
 
-  const episode = document.createElement('p');
+  const episode = document.createElement(post.url ? 'a' : 'p');
   episode.className = 'episode';
   episode.textContent = `EPISODE ${post.episode}`;
+  if (post.url) {
+    episode.href = post.url;
+    episode.target = '_blank';
+    episode.rel = 'noopener noreferrer';
+  }
   section.appendChild(episode);
 
   const title = document.createElement('h2');
@@ -273,12 +288,14 @@ function makeCrawlItemEl(item) {
 }
 
 function getLineCharLimit() {
-  const crawlWidth = Math.min(
-    window.innerWidth * (window.innerWidth <= 640 ? 0.92 : 0.86),
-    920
-  );
-  const approxCharWidth = window.innerWidth <= 640 ? 13 : 18;
-  return clampNumber(Math.floor(crawlWidth / approxCharWidth), 22, 52);
+  // CSS rule: width: min(88vw, 920px); font: clamp(1.4rem, 3.4vw, 2.8rem).
+  // Approximate the rendered glyph width as ~0.42× the resolved font size,
+  // which keeps lines visually similar from phone to desktop.
+  const crawlWidth = Math.min(window.innerWidth * 0.88, 920);
+  const fluidPx = 0.034 * window.innerWidth;  // 3.4vw in px
+  const fontPx = clampNumber(fluidPx, 1.4 * 16, 2.8 * 16);
+  const approxCharWidth = fontPx * 0.42;
+  return clampNumber(Math.floor(crawlWidth / approxCharWidth), 18, 56);
 }
 
 function countLineChars(words, start, end) {
@@ -410,6 +427,15 @@ function startCrawl(posts) {
   const renderedItems = new Map();
   let lastT = performance.now();
 
+  // Touch scrub state
+  let activeTouchId = null;
+  let touchLastY = 0;
+  let touchLastT = 0;
+  let touchMoved = false;
+  let touchVelocity = 0;       // px/sec, signed: positive = forward
+  let flickVelocity = 0;       // current momentum
+  let lastMeasuredWidth = window.innerWidth;
+
   function maxScrollOffset() {
     return totalHeight + viewport.clientHeight * 1.1;
   }
@@ -495,6 +521,18 @@ function startCrawl(posts) {
     }
     crawl.style.height = `${totalHeight}px`;
     syncScrollState();
+    lastMeasuredWidth = window.innerWidth;
+  }
+
+  function maybeRefreshOnResize() {
+    // The visual viewport on iOS fires resize for browser-chrome growth/shrink
+    // — we don't want to re-measure (and re-line-balance) for that, only for
+    // real width changes / orientation flips.
+    if (Math.abs(window.innerWidth - lastMeasuredWidth) > 4) {
+      refreshMeasurements();
+    } else {
+      syncScrollState();
+    }
   }
 
   function scrubByWheel(event) {
@@ -523,14 +561,86 @@ function startCrawl(posts) {
     syncScrollState();
   }
 
+  function onTouchStart(event) {
+    if (viewport.classList.contains('hidden')) return;
+    if (activeTouchId !== null) return;
+    const t = event.changedTouches[0];
+    if (!t) return;
+    activeTouchId = t.identifier;
+    touchLastY = t.clientY;
+    touchLastT = performance.now();
+    touchMoved = false;
+    touchVelocity = 0;
+    flickVelocity = 0;
+  }
+
+  function findTouch(list) {
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].identifier === activeTouchId) return list[i];
+    }
+    return null;
+  }
+
+  function onTouchMove(event) {
+    if (activeTouchId === null) return;
+    const t = findTouch(event.touches);
+    if (!t) return;
+    // Prevent the browser's own touch pan/zoom while we drive the scrub.
+    if (event.cancelable) event.preventDefault();
+    const now = performance.now();
+    const dy = (touchLastY - t.clientY) * TOUCH_DRAG_GAIN;
+    const dt = Math.max((now - touchLastT) / 1000, 0.001);
+    if (Math.abs(dy) > 0.5) touchMoved = true;
+    displayOffset = clampOffset(displayOffset + dy);
+    // Exponential-ish smoothing on velocity so a brief stop before release
+    // doesn't get treated as a hard flick.
+    const instV = dy / dt;
+    touchVelocity = touchVelocity * 0.6 + instV * 0.4;
+    touchLastY = t.clientY;
+    touchLastT = now;
+    syncScrollState();
+  }
+
+  function onTouchEnd(event) {
+    if (activeTouchId === null) return;
+    const t = findTouch(event.changedTouches);
+    if (!t) return;
+    activeTouchId = null;
+    if (touchMoved && Math.abs(touchVelocity) > TOUCH_FLICK_MIN_VELOCITY) {
+      flickVelocity = clampNumber(touchVelocity, -TOUCH_FLICK_MAX_PX_S, TOUCH_FLICK_MAX_PX_S);
+    } else {
+      flickVelocity = 0;
+    }
+    touchVelocity = 0;
+    touchMoved = false;
+  }
+
+  function onTouchCancel() {
+    activeTouchId = null;
+    touchVelocity = 0;
+    flickVelocity = 0;
+    touchMoved = false;
+  }
+
   crawl.style.height = `${totalHeight}px`;
   syncScrollState();
   window.addEventListener('wheel', scrubByWheel, { passive: false });
-  window.addEventListener('resize', refreshMeasurements);
-  window.addEventListener('pointerdown', () => {
+  window.addEventListener('resize', maybeRefreshOnResize);
+  window.addEventListener('orientationchange', refreshMeasurements);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', maybeRefreshOnResize);
+  }
+  viewport.addEventListener('touchstart', onTouchStart, { passive: true });
+  viewport.addEventListener('touchmove', onTouchMove, { passive: false });
+  viewport.addEventListener('touchend', onTouchEnd, { passive: true });
+  viewport.addEventListener('touchcancel', onTouchCancel, { passive: true });
+  window.addEventListener('pointerdown', (event) => {
+    // Touch-driven pointer events are the crawl scrub, not text selection.
+    if (event.pointerType === 'touch') return;
     isSelectingText = true;
   });
-  window.addEventListener('pointerup', () => {
+  window.addEventListener('pointerup', (event) => {
+    if (event.pointerType === 'touch') return;
     isSelectingText = false;
     renderedStart = -1;
     renderedEnd = -1;
@@ -544,6 +654,8 @@ function startCrawl(posts) {
   });
   window.addEventListener('blur', () => {
     isSelectingText = false;
+    activeTouchId = null;
+    flickVelocity = 0;
     renderedStart = -1;
     renderedEnd = -1;
     renderRange();
@@ -552,7 +664,17 @@ function startCrawl(posts) {
   function tick(now) {
     const dt = Math.min((now - lastT) / 1000, 0.1); // clamp big gaps (tab switch)
     lastT = now;
-    displayOffset = clampOffset(displayOffset + SPEED_PX_PER_SEC * dt);
+
+    let delta = SPEED_PX_PER_SEC * dt;
+
+    if (flickVelocity !== 0) {
+      delta += flickVelocity * dt;
+      // Exponential decay; once small enough, snap to 0.
+      flickVelocity *= Math.exp(-TOUCH_FLICK_DECAY * dt);
+      if (Math.abs(flickVelocity) < TOUCH_FLICK_MIN_VELOCITY) flickVelocity = 0;
+    }
+
+    displayOffset = clampOffset(displayOffset + delta);
     syncScrollState();
     requestAnimationFrame(tick);
   }
@@ -585,9 +707,55 @@ function playIntro() {
   });
 }
 
+/* ---------- Footer ---------- */
+
+function setupFooter() {
+  const startYear = 2026;
+  const currentYear = new Date().getFullYear();
+  // Show a range once we're past the start year; just the start otherwise.
+  const yearText = currentYear > startYear
+    ? `${startYear}–${currentYear}`
+    : `${startYear}`;
+  document.querySelectorAll('.year-range').forEach(el => {
+    el.textContent = yearText;
+  });
+
+  const footer = document.getElementById('site-footer');
+  const toggle = document.getElementById('footer-toggle');
+  if (!footer || !toggle) return;
+
+  function close() {
+    if (!footer.classList.contains('expanded')) return;
+    footer.classList.remove('expanded');
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  toggle.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const willExpand = !footer.classList.contains('expanded');
+    footer.classList.toggle('expanded', willExpand);
+    toggle.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
+  });
+
+  // Outside-click / tap closes the panel.
+  document.addEventListener('pointerdown', (event) => {
+    if (!footer.classList.contains('expanded')) return;
+    if (footer.contains(event.target)) return;
+    close();
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && footer.classList.contains('expanded')) {
+      close();
+      toggle.focus();
+    }
+  });
+}
+
 /* ---------- Main ---------- */
 
 async function main() {
+  setupFooter();
   const loading = document.getElementById('loading');
   const viewport = document.getElementById('crawl-viewport');
 
