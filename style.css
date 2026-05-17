@@ -1,0 +1,337 @@
+/* ============================================================
+   Culture Wars — Trump Truth Social, Star Wars opening crawl
+   ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #feda4a;
+  font-family: 'News Cycle', 'Arial Narrow', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Starfield (one element, hundreds of stars via box-shadow) ---------- */
+
+#starfield {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 0;
+  overflow: hidden;
+}
+#starfield::before,
+#starfield::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 2px;
+  background: transparent;
+  border-radius: 50%;
+  /* Star clusters generated via box-shadow at random-looking positions.
+     Two layers (::before small, ::after slightly larger) for parallax-y depth. */
+  box-shadow:
+    23vw 14vh #fff, 78vw 9vh #fff, 12vw 82vh #fff, 65vw 47vh #fff,
+    41vw 23vh #ccc, 89vw 71vh #fff, 4vw 56vh #fff,  53vw 88vh #fff,
+    71vw 31vh #fff, 18vw 67vh #ccc, 95vw 18vh #fff, 33vw 5vh  #fff,
+    7vw 39vh  #fff, 48vw 73vh #fff, 86vw 54vh #ccc, 27vw 95vh #fff,
+    59vw 12vh #fff, 81vw 38vh #fff, 14vw 26vh #fff, 67vw 81vh #ccc,
+    37vw 49vh #fff, 92vw 88vh #fff, 2vw  72vh #fff, 56vw 4vh  #fff,
+    74vw 65vh #fff, 21vw 41vh #ccc, 47vw 17vh #fff, 83vw 92vh #fff,
+    9vw 14vh  #fff, 62vw 58vh #fff, 30vw 76vh #fff, 76vw 24vh #ccc,
+    44vw 84vh #fff, 16vw 51vh #fff, 88vw 33vh #fff, 51vw 67vh #fff,
+    69vw 8vh  #ccc, 35vw 96vh #fff, 6vw  29vh #fff, 80vw 79vh #fff,
+    25vw 61vh #fff, 58vw 35vh #ccc, 73vw 89vh #fff, 11vw 7vh  #fff,
+    96vw 46vh #fff, 39vw 63vh #fff, 64vw 19vh #ccc, 84vw 78vh #fff,
+    19vw 91vh #fff, 49vw 22vh #fff;
+}
+#starfield::after {
+  width: 1px;
+  height: 1px;
+  opacity: 0.7;
+  box-shadow:
+    13vw 7vh  #fff, 87vw 13vh #fff, 32vw 28vh #fff, 71vw 36vh #fff,
+    5vw  44vh #fff, 58vw 52vh #fff, 92vw 19vh #fff, 17vw 73vh #fff,
+    44vw 81vh #fff, 79vw 62vh #fff, 26vw 11vh #fff, 63vw 27vh #fff,
+    8vw  85vh #fff, 36vw 38vh #fff, 51vw 9vh  #fff, 84vw 47vh #fff,
+    21vw 59vh #fff, 67vw 74vh #fff, 41vw 17vh #fff, 76vw 89vh #fff,
+    11vw 31vh #fff, 95vw 65vh #fff, 29vw 49vh #fff, 54vw 96vh #fff,
+    73vw 6vh  #fff, 38vw 67vh #fff, 16vw 22vh #fff, 89vw 53vh #fff,
+    47vw 39vh #fff, 62vw 83vh #fff, 31vw 14vh #fff, 81vw 76vh #fff,
+    7vw  60vh #fff, 56vw 26vh #fff, 24vw 43vh #fff, 69vw 92vh #fff,
+    93vw 35vh #fff, 42vw 71vh #fff, 19vw 86vh #fff, 77vw 21vh #fff;
+}
+
+/* ---------- Loading indicator ---------- */
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'News Cycle', sans-serif;
+  font-size: clamp(1rem, 2.5vw, 1.6rem);
+  letter-spacing: 0.4em;
+  color: #feda4a;
+  z-index: 100;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+#loading.hidden { display: none; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
+/* ---------- Intro sequence ---------- */
+
+#intro {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  pointer-events: none;
+}
+#intro.hidden { display: none; }
+
+#tagline {
+  position: absolute;
+  width: 80%;
+  max-width: 900px;
+  text-align: center;
+  color: #4bd5ee;
+  font-family: 'News Cycle', sans-serif;
+  font-weight: 400;
+  font-size: clamp(1.1rem, 2.8vw, 2rem);
+  line-height: 1.4;
+  opacity: 0;
+}
+#tagline.play {
+  animation: tagline-fade 5s ease-in-out forwards;
+}
+@keyframes tagline-fade {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+#logo {
+  position: absolute;
+  width: min(82vw, 820px);
+  height: auto;
+  opacity: 0;
+  transform: scale(1.9);
+  transform-origin: center center;
+  filter: drop-shadow(0 0 30px rgba(254, 218, 74, 0.25));
+}
+#logo.play {
+  animation: logo-zoom 6s linear forwards;
+}
+@keyframes logo-zoom {
+  0%   { opacity: 1; transform: scale(1.9); }
+  88%  { opacity: 1; transform: scale(0.18); }
+  100% { opacity: 0; transform: scale(0.08); }
+}
+
+/* ---------- Crawl ---------- */
+
+#crawl-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  perspective: 650px;
+  perspective-origin: 50% 100%;
+  /* Fade text into the void as it recedes */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 100%);
+          mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 100%);
+}
+#crawl-viewport.hidden { display: none; }
+
+#crawl,
+.crawl-measure {
+  position: absolute;
+  left: 50%;
+  width: min(86vw, 920px);
+  color: #feda4a;
+  font-family: 'Pathway Gothic One', 'News Cycle', sans-serif;
+  font-size: clamp(1.35rem, 3vw, 2.9rem);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+#crawl {
+  top: 112vh;
+  transform-origin: 50% 0%;
+  transform: translateX(-50%) rotateX(25deg);
+  will-change: transform;
+  -webkit-user-select: text;
+          user-select: text;
+}
+
+.crawl-measure {
+  position: fixed;
+  top: 0;
+  left: -200vw;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.post {
+  display: flow-root;
+  margin-bottom: 30vh;
+  text-align: center;
+  -webkit-user-select: text;
+          user-select: text;
+}
+
+.post .episode {
+  text-align: center;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 0.7em;
+  letter-spacing: 0.18em;
+  margin-bottom: 0.5em;
+}
+
+.post .title {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.15em;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  margin-bottom: 1.1em;
+  text-transform: uppercase;
+}
+
+.post .body {
+  font-size: 1em;
+  line-height: 1.45;
+  text-align: center;
+  hyphens: none;
+  word-spacing: normal;
+}
+
+.post .body p { margin-bottom: 0.65em; }
+.post .body p:last-child { margin-bottom: 0; }
+
+.post .body .line {
+  display: block;
+  white-space: nowrap;
+}
+
+.post .body p,
+.post .title {
+  text-wrap: normal;
+}
+
+/* ---------- Image grid (Truth Social / Mastodon-style) ---------- */
+
+.post .media-grid {
+  margin-top: 1.2em;
+  display: grid;
+  gap: 0.6em;
+  width: min(70%, 620px);
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.post .media-grid img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #050505;
+}
+
+.post .media-grid.n1 {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto;
+}
+.post .media-grid.n1 img { aspect-ratio: 16 / 10; }
+
+.post .media-grid.n2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto;
+}
+.post .media-grid.n2 img { aspect-ratio: 1 / 1; }
+
+.post .media-grid.n3 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  aspect-ratio: 16 / 10;
+}
+.post .media-grid.n3 img:nth-child(1) {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+}
+.post .media-grid.n3 img:nth-child(2) { grid-row: 1; grid-column: 2; }
+.post .media-grid.n3 img:nth-child(3) { grid-row: 2; grid-column: 2; }
+
+.post .media-grid.n4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  aspect-ratio: 16 / 10;
+}
+
+/* ---------- End card ---------- */
+
+.end-card {
+  text-align: center;
+  font-style: italic;
+  font-size: 0.9em;
+  letter-spacing: 0.4em;
+  margin-bottom: 10vh;
+  opacity: 0.85;
+}
+
+@media (max-width: 640px) {
+  #logo {
+    width: min(96vw, 640px);
+  }
+
+  #crawl {
+    top: 112vh;
+    width: min(92vw, 920px);
+    font-size: clamp(1.25rem, 7vw, 2.25rem);
+    line-height: 1.3;
+  }
+
+  .post {
+    margin-bottom: 9vh;
+  }
+
+  .post .episode,
+  .post .title {
+    text-align: center;
+  }
+
+  .post .body {
+    text-align: center;
+  }
+
+  .post .media-grid {
+    width: min(86%, 520px);
+  }
+
+  .crawl-measure {
+    width: min(92vw, 920px);
+    font-size: clamp(1.25rem, 7vw, 2.25rem);
+    line-height: 1.3;
+  }
+}
