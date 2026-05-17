@@ -171,8 +171,22 @@ html, body {
   perspective: clamp(420px, 60vh, 700px);
   perspective-origin: 50% 100%;
   /* Fade text into the void as it recedes */
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 100%);
-          mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 100%);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.35) 4%,
+    rgba(0, 0, 0, 0.82) 9%,
+    #000 13%,
+    #000 100%
+  );
+          mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.35) 4%,
+    rgba(0, 0, 0, 0.82) 9%,
+    #000 13%,
+    #000 100%
+  );
 }
 #crawl-viewport.hidden { display: none; }
 
@@ -218,8 +232,7 @@ html, body {
 
 .post {
   display: flow-root;
-  margin-bottom: 25vh;
-  margin-bottom: 25dvh;
+  margin-bottom: 0;
   text-align: center;
   -webkit-user-select: text;
           user-select: text;
@@ -264,9 +277,25 @@ html, body {
 .post .body p { margin-bottom: 0.65em; }
 .post .body p:last-child { margin-bottom: 0; }
 
+/* Trailing Trump signature ("DJT", "Donald J. TRUMP", etc.) — pops in
+   orange against the default crawl yellow. */
+.trump-signature {
+  color: #ff8c2a;
+}
+
 .post .body .line {
   display: block;
-  white-space: nowrap;
+  /* We *want* the balancer's wrap points to be the only soft-wrap points,
+     so non-breaking spaces between tokens of each .line are unnecessary
+     — but we also need a fallback for the rare case where the balancer
+     leaves a single token wider than the column (a 25-letter all-caps
+     word, an unbroken URL fragment, etc.). `pre` keeps adjacent spaces
+     visible (matters in the dim crawl text) without preventing wraps on
+     truly oversized tokens; `overflow-wrap: anywhere` lets the browser
+     break inside that single token rather than punch through the edge. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .post .body p,
@@ -333,7 +362,6 @@ html, body {
   font-style: italic;
   font-size: 0.9em;
   letter-spacing: 0.4em;
-  margin-bottom: 10vh;
   opacity: 0.85;
 }
 
@@ -355,7 +383,7 @@ html, body {
   font-size: 0.85rem;
   line-height: 1.25;
   letter-spacing: 0.04em;
-  color: rgba(254, 218, 74, 0.6);
+  color: rgba(255, 255, 255, 0.82);
   transition: color 0.2s ease;
 }
 
@@ -370,16 +398,28 @@ html, body {
   gap: 1rem;
   padding:
     0
-    max(2rem, env(safe-area-inset-right))
+    max(0.7rem, env(safe-area-inset-right))
     max(0.85rem, env(safe-area-inset-bottom))
-    max(0.9rem, env(safe-area-inset-left));
+    max(0.45rem, env(safe-area-inset-left));
 }
 
 .footer-section {
   pointer-events: auto;
+  /* Baseline alignment is what we want: the text baselines of "Peleg
+     Michael" and "GitHub" line up exactly, while the larger © glyph and
+     the icon stick up above proportionally without dragging the row. */
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.85rem;
+  /* Small dark chip behind each section so the starfield never bleeds
+     through the credit text. Subtle blur softens the edge. The mobile
+     media query disables this — the expanded panel already has its own
+     opaque backdrop. */
+  padding: 0.2em 0.65em;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+          backdrop-filter: blur(3px);
 }
 
 .footer-left  { justify-content: flex-start; }
@@ -388,37 +428,43 @@ html, body {
 #site-footer a {
   color: inherit;
   text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
   transition: color 0.2s ease;
 }
 
 #site-footer a:hover,
 #site-footer a:focus-visible {
-  color: rgba(254, 218, 74, 1);
+  color: rgba(255, 255, 255, 1);
   outline: none;
+}
+
+/* GitHub link: inline-block whose baseline is its text "GitHub". The SVG
+   is positioned with vertical-align so it sits visually centered with
+   the text. */
+.footer-link {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 #site-footer .footer-link svg {
   width: 1.5em;
   height: 1.5em;
-  flex: none;
-  display: block;
+  fill: currentColor;
+  vertical-align: -0.32em;
+  margin-right: 0.4em;
 }
 
-/* Match the © glyph in the copyright line to the GitHub icon visually. */
+/* Copyright: inline-block whose baseline is its trailing text. The big
+   © uses vertical-align (no transform) so it shares the same vertical
+   coordinate system as the rest of the inline content. */
 #site-footer .copyright {
-  display: inline-flex;
-  align-items: baseline;
+  display: inline-block;
+  white-space: nowrap;
 }
 #site-footer .copyright-mark {
   font-size: 1.45em;
   font-weight: 700;
   line-height: 1;
-  /* Baseline alignment puts the bigger glyph riding above the rest;
-     a tiny downward shift centers it visually with the GitHub icon. */
-  transform: translateY(0.08em);
+  vertical-align: -0.12em;
 }
 
 #site-footer .credit a {
@@ -428,9 +474,9 @@ html, body {
 /* ---------- Mobile collapsed footer ---------- */
 
 @media (max-width: 640px) {
-  /* The footer becomes a small © tab on the bottom-left. Tap to reveal a
-     panel that holds the full credit text. The panel has a solid backdrop
-     so the crawl behind it can't bleed through. */
+  /* The footer becomes a bare © glyph on the bottom-left. Tap to reveal
+     a panel that holds the full credit text. The panel has a solid
+     backdrop so the crawl behind it can't bleed through. */
 
   #site-footer {
     font-size: 0.78rem;
@@ -444,17 +490,25 @@ html, body {
     position: fixed;
     bottom: max(0.55rem, env(safe-area-inset-bottom));
     left: max(0.55rem, env(safe-area-inset-left));
+    /* Generous hit target — the visible glyph is small but the touch
+       region is the full 2.4rem square. */
     width: 2.4rem;
     height: 2.4rem;
     padding: 0;
-    border: 1px solid rgba(254, 218, 74, 0.45);
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.7);
-    color: rgba(254, 218, 74, 0.8);
+    border: none;
+    background: transparent;
+    border-radius: 0;
+    color: rgba(255, 255, 255, 0.9);
     font: inherit;
-    font-size: 1.55rem;
+    font-size: 1.75rem;
     font-weight: 700;
     line-height: 1;
+    /* Multi-layer black halo masks any stars sitting directly behind the
+       glyph so it never visually clashes with the starfield. */
+    text-shadow:
+      0 0 10px rgba(0, 0, 0, 1),
+      0 0 6px  rgba(0, 0, 0, 1),
+      0 0 3px  rgba(0, 0, 0, 1);
     cursor: pointer;
     pointer-events: auto;
     z-index: 42;
@@ -462,17 +516,16 @@ html, body {
     -webkit-user-select: none;
             user-select: none;
     -webkit-touch-callout: none;
-    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: color 0.15s ease, transform 0.15s ease;
   }
   .footer-toggle span { pointer-events: none; }
 
   .footer-toggle:hover,
   .footer-toggle:focus-visible,
   #site-footer.expanded .footer-toggle {
-    background: rgba(0, 0, 0, 0.85);
-    color: rgba(254, 218, 74, 1);
-    border-color: rgba(254, 218, 74, 0.85);
+    color: rgba(255, 255, 255, 1);
     outline: none;
+    transform: scale(1.06);
   }
 
   .footer-panel {
@@ -511,6 +564,22 @@ html, body {
     align-items: flex-start;
     gap: 0.45rem;
     text-align: left;
+    /* The mobile expanded panel already has a solid backdrop, so the
+       per-section chip is redundant here. */
+    padding: 0;
+    background: transparent;
+    -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+    border-radius: 0;
+  }
+  /* Copyright and GitHub share a row at the top of the panel; the
+     Substack credits go underneath. flex-wrap kicks in on the very
+     narrowest screens so the GitHub link wraps below if it has to. */
+  .footer-left {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.75rem;
   }
   .footer-right { text-align: left; }
 

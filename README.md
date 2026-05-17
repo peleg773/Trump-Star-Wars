@@ -38,9 +38,9 @@ Then open `http://localhost:8000` in a browser. Any static file server works.
 
 **Line balancing.** Each sentence is then split into screen lines using a small greedy balancer in `balanceSentenceLines` — it tries to make every line of a paragraph roughly the same length, which is what gives the crawl its tidy, centered shape instead of a ragged right edge.
 
-**Windowed rendering.** The archive can be large, so the crawl doesn't put every post in the DOM. It measures every item's height once (in a hidden probe element), builds a prefix-sum table, and only renders items inside a window of roughly 4 viewports behind and 7 ahead of the current scroll offset. Items outside that window are removed, unless the user is currently selecting text — in which case the selection is preserved.
+**Windowed rendering.** The archive can be large, so the crawl doesn't put every post in the DOM. It measures every item's height once (in a hidden probe element), builds a prefix-sum table, and only renders items inside a window of roughly 10 viewports behind and 7 ahead of the current scroll offset. Items outside that window are removed, unless the user is currently selecting text — in which case the selection is preserved.
 
-**Tuning.** Most of the dials live at the top of [app.js](app.js): `SPEED_PX_PER_SEC` for crawl speed, `WHEEL_*` for how the mouse wheel scrubs, the `INTRO_*` timings for the opening sequence.
+**Tuning.** Most of the dials live at the top of [app.js](app.js): `SPEED_PX_PER_SEC` for crawl speed, `WHEEL_JUMP_VIEWPORTS` for how far each desktop wheel/trackpad scrub step moves, the other `WHEEL_*` values for scrub sensitivity/caps, and the `INTRO_*` timings for the opening sequence.
 
 ## Caveats
 

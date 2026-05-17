@@ -5,11 +5,33 @@
 const ARCHIVE_URL = 'https://ix.cnn.io/data/truth-social/truth_archive.json';
 
 const SPEED_PX_PER_SEC = 55;
-const RENDER_BEHIND_VIEWPORTS = 4;
+// Mobile viewports are shorter, so the same px/sec consumes more screen
+// per second than on desktop. Scale the crawl speed down on narrow
+// screens so the *perceived* pace (viewport-heights per second) matches.
+const MOBILE_SPEED_FACTOR = 0.7;
+const MOBILE_WIDTH_THRESHOLD = 640;
+
+function currentCrawlSpeed() {
+  return window.innerWidth <= MOBILE_WIDTH_THRESHOLD
+    ? SPEED_PX_PER_SEC * MOBILE_SPEED_FACTOR
+    : SPEED_PX_PER_SEC;
+}
+// Keep already-passed posts in the DOM well beyond the top fade band so
+// reverse scrolling never inserts text while it is still visible.
+const RENDER_BEHIND_VIEWPORTS = 10;
 const RENDER_AHEAD_VIEWPORTS = 7;
 const WHEEL_DELTA_STEP_PX = 110;
 const WHEEL_MAX_STEPS = 3;
-const WHEEL_JUMP_VIEWPORTS = 0.07;
+// Desktop wheel/trackpad scrub distance per accepted scroll step, expressed
+// as a fraction of the viewport height. Raise/lower this to tune how far a
+// wheel gesture moves the crawl.
+const WHEEL_JUMP_VIEWPORTS = 0.085;
+// Exact empty space inserted between consecutive crawl items. It is applied
+// in the prefix-sum layout, not as CSS margin, so every post-to-post gap is
+// numerically identical.
+const POST_GAP_VIEWPORTS = 0.25;
+const POST_GAP_MOBILE_SCALE = 0.6;
+const POST_GAP_SMALL_MOBILE_SCALE = 0.5;
 const TOUCH_DRAG_GAIN = 1.4;       // finger-pixel → crawl-pixel multiplier
 const TOUCH_FLICK_MAX_PX_S = 4200; // cap on flick momentum velocity
 const TOUCH_FLICK_DECAY = 4.5;     // momentum decay rate per second
@@ -18,6 +40,10 @@ const MIN_TEXT_CHARS   = 1;
 const MAX_IMAGES       = 4;
 const FETCH_TIMEOUT_MS = 12000;
 const EMBED_REMOTE_IMAGES = false;
+// Toggle the orange highlight on trailing Trump signatures ("DJT",
+// "DONALD J. TRUMP", etc.). Flip to false to render those names in the
+// default crawl yellow.
+const HIGHLIGHT_TRUMP_SIGNATURE = false;
 
 const INTRO_TAGLINE_MS = 5000;
 const INTRO_LOGO_MS    = 7500;
@@ -27,7 +53,7 @@ const INTRO_GAP_MS     = 300;
 // 12vh starting offset (see CSS) plus the constant 55 px/s climb means
 // the first line takes ~1–2 s to clear the screen edge depending on
 // viewport height; we need that lead time to baked into the overlap.
-const CRAWL_LOGO_OVERLAP_MS = 3500;
+const CRAWL_LOGO_OVERLAP_MS = 4500;
 
 const TAGLINE = 'Not a long time ago, in a galaxy not far, far away...';
 
@@ -85,41 +111,163 @@ function isRetweet(text) {
   return /^RT(?:\s|:|@)/i.test(text);
 }
 
+/* ---------- Sentence splitting -----------------------------------------
+
+   The Truth Social archive is full of sentence-splitter landmines:
+   U.S., F.B.I., Mr. Trump, decimal numbers, ellipses, all-caps emphasis.
+   Both Intl.Segmenter and the regex fallback can be fooled, so the
+   strategy is to mask every period that is NOT a real sentence terminator
+   with a private-use code point before segmentation, then restore them.
+
+   Two complementary protectors:
+     1. A *generic* pattern  `(letter.)(letter.)+`  which catches any
+        acronym written as repeated letter-plus-period, even ones we
+        haven't enumerated (U.S., F.B.I., A.O.C., J.D., etc).
+     2. A *named* list of single-token abbreviations (Mr., Dr., etc.,
+        Inc.) which the generic pattern can't reach because they have
+        more than one letter before the dot.
+
+   Plus: decimals, ellipses, and "Initial. Surname" name patterns.
+
+   Finally `cleanSentenceBreaks` runs a lowercase-continuation safety net:
+   real English sentences don't start with a lowercase letter, so a split
+   that produced one is almost certainly a missed abbreviation and gets
+   merged back. ------------------------------------------------------- */
+
+const DOT_SENTINEL = '';
+
+const ABBREVIATIONS = [
+  // Geo / political — also covered by the generic acronym pattern, but
+  // listed for clarity and because some are < 2 tokens.
+  'U.S.A.', 'U.S.', 'U.K.', 'U.N.', 'E.U.', 'D.C.',
+  'N.Y.', 'L.A.', 'N.J.', 'N.H.', 'P.R.',
+  // Agencies & departments
+  'F.B.I.', 'C.I.A.', 'D.O.J.', 'I.R.S.', 'D.O.D.', 'N.S.A.',
+  'E.P.A.', 'F.A.A.', 'F.D.A.', 'I.C.E.', 'A.T.F.', 'D.H.S.',
+  // Honorifics & titles
+  'Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Sr.', 'Jr.', 'St.',
+  'Pres.', 'Gov.', 'Sen.', 'Rep.', 'Gen.', 'Capt.', 'Lt.', 'Col.',
+  'Sgt.', 'Adm.', 'Maj.', 'Cmdr.',
+  // Address
+  'Ave.', 'Blvd.', 'Rd.',
+  // Business
+  'Inc.', 'Co.', 'Ltd.', 'Corp.',
+  // Latin / shorthand
+  'vs.', 'etc.', 'i.e.', 'e.g.', 'cf.', 'al.',
+  // Time
+  'a.m.', 'p.m.',
+  // Misc
+  'No.',
+];
+
+// Build a case-insensitive alternation, longest first so 'U.S.A.' beats
+// 'U.S.' when both could match.
+const ABBR_RE = new RegExp(
+  '\\b(?:' +
+    ABBREVIATIONS
+      .slice()
+      .sort((a, b) => b.length - a.length)
+      .map(a => a.replace(/\./g, '\\.'))
+      .join('|') +
+  ')',
+  'gi'
+);
+
+function protectAbbreviations(text) {
+  return text
+    // 1. Generic multi-letter acronyms: U.S., F.B.I., U.S.A., J.D., A.O.C.
+    .replace(/\b(?:[A-Za-z]\.){2,}/g, m => m.replace(/\./g, DOT_SENTINEL))
+    // 2. Known single-token abbreviations: Mr., Dr., etc., Inc., a.m.
+    .replace(ABBR_RE, m => m.replace(/\./g, DOT_SENTINEL))
+    // 3. Decimal numbers and section refs: 1.5, 1.2.3, $99.99
+    //    Lookahead keeps overlapping cases (1.2.3) intact.
+    .replace(/(\d)\.(?=\d)/g, '$1' + DOT_SENTINEL)
+    // 4a. Single-letter initial followed by another single-letter initial
+    //     ("J. D. Vance"). Without this, "J." would be left as a fragment.
+    .replace(/\b([A-Z])\.(?=\s+[A-Z]\.)/g, '$1' + DOT_SENTINEL)
+    // 4b. "Initial. Surname" — capital + dot + (cap+lowercase word) or
+    //     (ALLCAPS word). Catches "J. Trump", "F. Scott", "J. TRUMP".
+    .replace(/\b([A-Z])\.(?=\s+[A-Z][a-zA-Z]{2,}\b)/g, '$1' + DOT_SENTINEL)
+    // 5. Ellipses: ASCII run of 2+ dots, or the Unicode horizontal ellipsis.
+    //    These are mid-sentence pauses, never terminators.
+    .replace(/\.{2,}/g, m => DOT_SENTINEL.repeat(m.length))
+    .replace(/…/g, DOT_SENTINEL.repeat(3));
+}
+
+function restoreDots(s) {
+  return s.split(DOT_SENTINEL).join('.');
+}
+
 function cleanSentenceBreaks(sentences) {
   const out = [];
   for (const sentence of sentences) {
     const previous = out[out.length - 1];
-    if (previous && /\bJ\.$/.test(previous) && /^TRUMP\b/.test(sentence)) {
-      out[out.length - 1] = `${previous} ${sentence}`;
-    } else {
+    if (!previous) {
       out.push(sentence);
+      continue;
     }
+    // Safety net: a real English sentence never starts with a lowercase
+    // letter, so a split that produced one is almost certainly a missed
+    // abbreviation. Glue it back.
+    if (/^[a-z]/.test(sentence)) {
+      out[out.length - 1] = `${previous} ${sentence}`;
+      continue;
+    }
+    // Historical-specific safety net for "J. TRUMP" if it somehow slipped
+    // through both protectors above (e.g. weird whitespace).
+    if (/\bJ\.$/.test(previous) && /^TRUMP\b/.test(sentence)) {
+      out[out.length - 1] = `${previous} ${sentence}`;
+      continue;
+    }
+    out.push(sentence);
   }
   return out;
+}
+
+// Insert a space at typo'd sentence boundaries: a 2+ letter word
+// followed by a period and immediately a capital letter, no space in
+// between ("Amendment.Election"). Done *before* abbreviation masking so
+// that genuine "Mr.Smith"-style abbreviations still get masked normally
+// after the space is inserted ("Mr. Smith" → "Mr<sentinel> Smith"). The
+// `[a-zA-Z]{2,}` lookbehind keeps decimals (1.5) and single-letter
+// initials (I. Said) safe.
+function insertMissingSpaces(text) {
+  return text.replace(/(?<=[a-zA-Z]{2})\.(?=[A-Z])/g, '. ');
 }
 
 function splitSentences(text) {
   if (!text) return [];
 
+  const masked = protectAbbreviations(insertMissingSpaces(text));
+
+  let segments;
   if (typeof Intl !== 'undefined' && Intl.Segmenter) {
     const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
-    return cleanSentenceBreaks(
-      Array.from(segmenter.segment(text), part => part.segment.trim()).filter(Boolean)
-    );
+    segments = Array.from(segmenter.segment(masked), part => part.segment);
+  } else {
+    segments = masked.match(/[^.!?]+(?:[.!?]+["')\]]*|$)/g) || [];
   }
 
-  const protectedText = text
-    .replace(/\bU\.S\.A\./g, 'U<dot>S<dot>A<dot>')
-    .replace(/\bU\.S\./g, 'U<dot>S<dot>')
-    .replace(/\bD\.C\./g, 'D<dot>C<dot>')
-    .replace(/\bJ\. TRUMP\b/g, 'J<dot> TRUMP');
-
   return cleanSentenceBreaks(
-    (protectedText.match(/[^.!?]+(?:[.!?]+["')\]]*|$)/g) || [])
-      .map(sentence => sentence.replaceAll('<dot>', '.').trim())
+    segments
+      .map(s => restoreDots(s).trim())
       .filter(Boolean)
   );
 }
+
+/* ---------- Signature detection ----------
+   A lot of posts close with a Trump signature: "DJT", "Donald J. TRUMP",
+   "President DONALD J. TRUMP", etc. We highlight the name (NOT the
+   "President" honorific) in orange — but only when the name terminates
+   a sentence, so mid-text mentions of "Trump" aren't colored.
+
+   Anchored to end-of-sentence by requiring the tail to contain nothing
+   but whitespace and closing punctuation. The optional "Donald [J.]"
+   prefix is part of the captured name; "President" (if present) stays
+   in the unhighlighted prefix.                                          */
+
+const SIGNATURE_END_RE =
+  /^(.*?)\s*\b((?:Donald\s+(?:J\.?\s+)?)?(?:Trump|DJT))\s*([.!?…\s"')\]]*)$/i;
 
 function classifyMedia(url) {
   if (typeof url !== 'string') return 'other';
@@ -216,6 +364,55 @@ async function fetchAndPrepare() {
 
 /* ---------- Rendering ---------- */
 
+function appendSentenceLines(p, sentence) {
+  const sig = HIGHLIGHT_TRUMP_SIGNATURE ? sentence.match(SIGNATURE_END_RE) : null;
+
+  // Non-signature sentences (or signature highlighting disabled):
+  // simple line-by-line rendering.
+  if (!sig || !sig[2]) {
+    for (const line of balanceSentenceLines(sentence)) {
+      const span = document.createElement('span');
+      span.className = 'line';
+      span.textContent = line;
+      p.appendChild(span);
+    }
+    return;
+  }
+
+  // Signature sentence: glue the name with NBSPs so the balancer keeps
+  // "DONALD J. TRUMP" on a single line, then split the rendered line at
+  // the name boundary so we can wrap it in its own span.
+  const NBSP = ' ';
+  const prefix = sig[1];
+  const nameRaw = sig[2];
+  const tail   = sig[3];
+  const nameNbsp = nameRaw.replace(/\s+/g, NBSP);
+  const reconstructed = (prefix ? prefix + ' ' : '') + nameNbsp + tail;
+
+  const lines = balanceSentenceLines(reconstructed);
+  for (const line of lines) {
+    const span = document.createElement('span');
+    span.className = 'line';
+
+    const idx = line.indexOf(nameNbsp);
+    if (idx === -1) {
+      span.textContent = line.replace(/ /g, ' ');
+    } else {
+      const before = line.slice(0, idx).replace(/ /g, ' ');
+      const after  = line.slice(idx + nameNbsp.length).replace(/ /g, ' ');
+
+      if (before) span.appendChild(document.createTextNode(before));
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'trump-signature';
+      nameSpan.textContent = nameRaw;
+      span.appendChild(nameSpan);
+      if (after) span.appendChild(document.createTextNode(after));
+    }
+
+    p.appendChild(span);
+  }
+}
+
 function makePostEl(post) {
   const section = document.createElement('section');
   section.className = 'post';
@@ -240,12 +437,7 @@ function makePostEl(post) {
   const sentences = post.sentences && post.sentences.length ? post.sentences : splitSentences(post.body);
   for (const sentence of sentences) {
     const p = document.createElement('p');
-    for (const line of balanceSentenceLines(sentence)) {
-      const span = document.createElement('span');
-      span.className = 'line';
-      span.textContent = line;
-      p.appendChild(span);
-    }
+    appendSentenceLines(p, sentence);
     body.appendChild(p);
   }
   section.appendChild(body);
@@ -357,10 +549,23 @@ function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function buildPrefixSums(heights) {
+function currentPostGapScale() {
+  if (window.innerWidth <= 380) return POST_GAP_SMALL_MOBILE_SCALE;
+  if (window.innerWidth <= MOBILE_WIDTH_THRESHOLD) return POST_GAP_MOBILE_SCALE;
+  return 1;
+}
+
+function currentPostGapPx(viewport) {
+  // Whole CSS pixels keep browser subpixel quantization from distributing
+  // tiny remainders differently between different-height posts.
+  return Math.round(viewport.clientHeight * POST_GAP_VIEWPORTS * currentPostGapScale());
+}
+
+function buildPrefixSums(heights, gapPx) {
   const prefix = [0];
-  for (const height of heights) {
-    prefix.push(prefix[prefix.length - 1] + height);
+  for (let i = 0; i < heights.length; i++) {
+    const gapAfter = i < heights.length - 1 ? gapPx : 0;
+    prefix.push(prefix[prefix.length - 1] + heights[i] + gapAfter);
   }
   return prefix;
 }
@@ -390,8 +595,7 @@ function measureCrawlItems(items) {
   const heights = items.map(item => {
     const el = makeCrawlItemEl(item);
     probe.appendChild(el);
-    const style = getComputedStyle(el);
-    const height = el.offsetHeight + parseFloat(style.marginBottom || '0');
+    const height = el.getBoundingClientRect().height;
     el.remove();
     return height;
   });
@@ -416,8 +620,9 @@ function startCrawl(posts) {
   const viewport = document.getElementById('crawl-viewport');
   const items = posts.map(post => ({ type: 'post', post })).concat({ type: 'end' });
 
+  let postGapPx = currentPostGapPx(viewport);
   let heights = measureCrawlItems(items);
-  let prefix = buildPrefixSums(heights);
+  let prefix = buildPrefixSums(heights, postGapPx);
   let totalHeight = prefix[prefix.length - 1];
   let displayOffset = 0;
   let wheelRemainder = 0;
@@ -435,6 +640,7 @@ function startCrawl(posts) {
   let touchVelocity = 0;       // px/sec, signed: positive = forward
   let flickVelocity = 0;       // current momentum
   let lastMeasuredWidth = window.innerWidth;
+  let lastMeasuredHeight = viewport.clientHeight;
 
   function maxScrollOffset() {
     return totalHeight + viewport.clientHeight * 1.1;
@@ -510,8 +716,9 @@ function startCrawl(posts) {
 
   function refreshMeasurements() {
     const progress = totalHeight > 0 ? displayOffset / totalHeight : 0;
+    postGapPx = currentPostGapPx(viewport);
     heights = measureCrawlItems(items);
-    prefix = buildPrefixSums(heights);
+    prefix = buildPrefixSums(heights, postGapPx);
     totalHeight = prefix[prefix.length - 1];
     displayOffset = clampOffset(progress * totalHeight);
     renderedStart = -1;
@@ -522,13 +729,14 @@ function startCrawl(posts) {
     crawl.style.height = `${totalHeight}px`;
     syncScrollState();
     lastMeasuredWidth = window.innerWidth;
+    lastMeasuredHeight = viewport.clientHeight;
   }
 
   function maybeRefreshOnResize() {
-    // The visual viewport on iOS fires resize for browser-chrome growth/shrink
-    // — we don't want to re-measure (and re-line-balance) for that, only for
-    // real width changes / orientation flips.
-    if (Math.abs(window.innerWidth - lastMeasuredWidth) > 4) {
+    // Width changes affect line balancing; height changes affect the
+    // viewport-based post gap. Either way, rebuild the prefix table so
+    // every top position keeps the exact same inter-post gap.
+    if (window.innerWidth !== lastMeasuredWidth || viewport.clientHeight !== lastMeasuredHeight) {
       refreshMeasurements();
     } else {
       syncScrollState();
@@ -538,6 +746,7 @@ function startCrawl(posts) {
   function scrubByWheel(event) {
     if (viewport.classList.contains('hidden')) return;
     event.preventDefault();
+    if (viewport.classList.contains('scrub-locked')) return;
 
     const rawDeltaPx = wheelDeltaToPixels(event, viewport);
     wheelRemainder += rawDeltaPx;
@@ -563,6 +772,7 @@ function startCrawl(posts) {
 
   function onTouchStart(event) {
     if (viewport.classList.contains('hidden')) return;
+    if (viewport.classList.contains('scrub-locked')) return;
     if (activeTouchId !== null) return;
     const t = event.changedTouches[0];
     if (!t) return;
@@ -665,7 +875,7 @@ function startCrawl(posts) {
     const dt = Math.min((now - lastT) / 1000, 0.1); // clamp big gaps (tab switch)
     lastT = now;
 
-    let delta = SPEED_PX_PER_SEC * dt;
+    let delta = currentCrawlSpeed() * dt;
 
     if (flickVelocity !== 0) {
       delta += flickVelocity * dt;
@@ -737,11 +947,23 @@ function setupFooter() {
     toggle.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
   });
 
-  // Outside-click / tap closes the panel.
+  // When the panel is open and the user taps outside it, close the panel
+  // and *swallow the subsequent click* — the user almost certainly meant
+  // "dismiss" rather than "activate the Episode link I just tapped".
+  let closedAt = 0;
   document.addEventListener('pointerdown', (event) => {
     if (!footer.classList.contains('expanded')) return;
     if (footer.contains(event.target)) return;
     close();
+    closedAt = performance.now();
+  }, true);
+
+  document.addEventListener('click', (event) => {
+    if (closedAt && performance.now() - closedAt < 400) {
+      event.preventDefault();
+      event.stopPropagation();
+      closedAt = 0;
+    }
   }, true);
 
   document.addEventListener('keydown', (event) => {
@@ -758,6 +980,7 @@ async function main() {
   setupFooter();
   const loading = document.getElementById('loading');
   const viewport = document.getElementById('crawl-viewport');
+  viewport.classList.add('scrub-locked');
 
   let posts;
   try {
@@ -791,6 +1014,7 @@ async function main() {
 
   setTimeout(launchCrawl, crawlDelay);
   await introDone;
+  viewport.classList.remove('scrub-locked');
   launchCrawl();
 }
 
