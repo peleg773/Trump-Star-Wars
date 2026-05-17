@@ -16,6 +16,12 @@ function currentCrawlSpeed() {
     ? SPEED_PX_PER_SEC * MOBILE_SPEED_FACTOR
     : SPEED_PX_PER_SEC;
 }
+
+function currentCrawlLogoOverlapMs() {
+  return window.innerWidth <= MOBILE_WIDTH_THRESHOLD
+    ? MOBILE_CRAWL_LOGO_OVERLAP_MS
+    : CRAWL_LOGO_OVERLAP_MS;
+}
 // Keep already-passed posts in the DOM well beyond the top fade band so
 // reverse scrolling never inserts text while it is still visible.
 const RENDER_BEHIND_VIEWPORTS = 10;
@@ -30,8 +36,8 @@ const WHEEL_JUMP_VIEWPORTS = 0.085;
 // in the prefix-sum layout, not as CSS margin, so every post-to-post gap is
 // numerically identical.
 const POST_GAP_VIEWPORTS = 0.25;
-const POST_GAP_MOBILE_SCALE = 0.6;
-const POST_GAP_SMALL_MOBILE_SCALE = 0.5;
+const POST_GAP_MOBILE_SCALE = 1;
+const POST_GAP_SMALL_MOBILE_SCALE = 0.9;
 const TOUCH_DRAG_GAIN = 1.4;       // finger-pixel → crawl-pixel multiplier
 const TOUCH_FLICK_MAX_PX_S = 4200; // cap on flick momentum velocity
 const TOUCH_FLICK_DECAY = 4.5;     // momentum decay rate per second
@@ -53,9 +59,12 @@ const INTRO_GAP_MS     = 300;
 // 12vh starting offset (see CSS) plus the constant 55 px/s climb means
 // the first line takes ~1–2 s to clear the screen edge depending on
 // viewport height; we need that lead time to baked into the overlap.
-const CRAWL_LOGO_OVERLAP_MS = 4500;
+const CRAWL_LOGO_OVERLAP_MS = 6600;
+const CRAWL_MOBILE_DESKTOP_DIFF = 1500;
+const MOBILE_CRAWL_LOGO_OVERLAP_MS = CRAWL_LOGO_OVERLAP_MS - CRAWL_MOBILE_DESKTOP_DIFF;
 
 const TAGLINE = 'Not a long time ago, in a galaxy not far, far away...';
+const FONT_LOAD_SAMPLE = 'EPISODE MAY 17, 2026 DONALD J. TRUMP TRANSMISSION';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm|m4v)(\?|$|#)/i;
 const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp)(\?|$|#)/i;
@@ -607,9 +616,15 @@ function measureCrawlItems(items) {
 async function waitForFonts() {
   if (!document.fonts || !document.fonts.ready) return;
 
+  const requestedFonts = [
+    document.fonts.load('48px "Pathway Gothic One"', FONT_LOAD_SAMPLE),
+    document.fonts.load('16px "News Cycle"', FONT_LOAD_SAMPLE),
+    document.fonts.ready
+  ].map(promise => promise.catch(() => null));
+
   await Promise.race([
-    document.fonts.ready,
-    new Promise(resolve => setTimeout(resolve, 3000))
+    Promise.all(requestedFonts),
+    new Promise(resolve => setTimeout(resolve, 5000))
   ]);
 }
 
@@ -840,6 +855,9 @@ function startCrawl(posts) {
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', maybeRefreshOnResize);
   }
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(refreshMeasurements).catch(() => {});
+  }
   viewport.addEventListener('touchstart', onTouchStart, { passive: true });
   viewport.addEventListener('touchmove', onTouchMove, { passive: false });
   viewport.addEventListener('touchend', onTouchEnd, { passive: true });
@@ -946,6 +964,9 @@ function setupFooter() {
     footer.classList.toggle('expanded', willExpand);
     toggle.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
   });
+  toggle.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+  });
 
   // When the panel is open and the user taps outside it, close the panel
   // and *swallow the subsequent click* — the user almost certainly meant
@@ -1002,7 +1023,7 @@ async function main() {
   await waitForFonts();
 
   const introDone = playIntro();
-  const crawlDelay = INTRO_TAGLINE_MS + INTRO_GAP_MS + Math.max(0, INTRO_LOGO_MS - CRAWL_LOGO_OVERLAP_MS);
+  const crawlDelay = INTRO_TAGLINE_MS + INTRO_GAP_MS + Math.max(0, INTRO_LOGO_MS - currentCrawlLogoOverlapMs());
   let crawlStarted = false;
 
   function launchCrawl() {

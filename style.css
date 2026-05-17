@@ -398,7 +398,7 @@ html, body {
   gap: 1rem;
   padding:
     0
-    max(0.7rem, env(safe-area-inset-right))
+    max(0.9rem, env(safe-area-inset-right))
     max(0.85rem, env(safe-area-inset-bottom))
     max(0.45rem, env(safe-area-inset-left));
 }
@@ -481,6 +481,7 @@ html, body {
   #site-footer {
     font-size: 0.78rem;
     letter-spacing: 0.02em;
+    z-index: 60;
   }
 
   .footer-toggle {
@@ -491,16 +492,16 @@ html, body {
     bottom: max(0.55rem, env(safe-area-inset-bottom));
     left: max(0.55rem, env(safe-area-inset-left));
     /* Generous hit target — the visible glyph is small but the touch
-       region is the full 2.4rem square. */
-    width: 2.4rem;
-    height: 2.4rem;
+       region is the full 2.75rem square. */
+    width: 2.75rem;
+    height: 2.75rem;
     padding: 0;
     border: none;
     background: transparent;
     border-radius: 0;
     color: rgba(255, 255, 255, 0.9);
     font: inherit;
-    font-size: 1.75rem;
+    font-size: 1.95rem;
     font-weight: 700;
     line-height: 1;
     /* Multi-layer black halo masks any stars sitting directly behind the
@@ -510,8 +511,9 @@ html, body {
       0 0 6px  rgba(0, 0, 0, 1),
       0 0 3px  rgba(0, 0, 0, 1);
     cursor: pointer;
+    touch-action: manipulation;
     pointer-events: auto;
-    z-index: 42;
+    z-index: 62;
     /* The © glyph itself shouldn't be a text-selection target. */
     -webkit-user-select: none;
             user-select: none;
@@ -545,7 +547,7 @@ html, body {
     border: 1px solid rgba(254, 218, 74, 0.35);
     border-radius: 10px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-    z-index: 41;
+    z-index: 61;
     pointer-events: auto;
   }
 
