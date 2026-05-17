@@ -1,5 +1,7 @@
 # Culture Wars
 
+Live at [https://peleg773.github.io/Trump-Star-Wars/](https://peleg773.github.io/Trump-Star-Wars/).
+
 A single-page web toy that takes Donald Trump's Truth Social posts and serves them up as a *Star Wars* opening crawl — yellow text receding into space, starfield in the background, the works.
 
 It pulls from CNN's public Truth Social archive, filters out anything that wouldn't read well as a crawl (retweets, link dumps, video posts), numbers each remaining post as an "episode" in Roman numerals, and scrolls them up into the void.
