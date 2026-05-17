@@ -18,9 +18,11 @@ function currentCrawlSpeed() {
 }
 
 function currentCrawlLogoOverlapMs() {
-  return window.innerWidth <= MOBILE_WIDTH_THRESHOLD
-    ? MOBILE_CRAWL_LOGO_OVERLAP_MS
-    : CRAWL_LOGO_OVERLAP_MS;
+  if (window.innerWidth > MOBILE_WIDTH_THRESHOLD) return CRAWL_LOGO_OVERLAP_MS;
+
+  const entryTravelPx = window.innerHeight * Math.max(0, CRAWL_START_TOP_VIEWPORTS - 1);
+  const entryTravelMs = entryTravelPx / currentCrawlSpeed() * 1000;
+  return MOBILE_TEXT_VISIBLE_BEFORE_LOGO_MS + entryTravelMs;
 }
 // Keep already-passed posts in the DOM well beyond the top fade band so
 // reverse scrolling never inserts text while it is still visible.
@@ -53,13 +55,12 @@ const INTRO_TAGLINE_MS = 5000;
 const INTRO_LOGO_MS    = 7500;
 const INTRO_GAP_MS     = 300;
 // The crawl element appears partway through the logo recession so the
-// text has time to actually travel into the viewport from below. The
-// 12vh starting offset (see CSS) plus the constant 55 px/s climb means
-// the first line takes ~1–2 s to clear the screen edge depending on
-// viewport height; we need that lead time to baked into the overlap.
+// text has time to travel into the viewport from just below the bottom.
+// Mobile computes its overlap from the current viewport height so the
+// first line becomes visible this many milliseconds before the logo ends.
 const CRAWL_LOGO_OVERLAP_MS = 6600;
-const CRAWL_MOBILE_DESKTOP_DIFF = 10000;
-const MOBILE_CRAWL_LOGO_OVERLAP_MS = CRAWL_LOGO_OVERLAP_MS - CRAWL_MOBILE_DESKTOP_DIFF;
+const MOBILE_TEXT_VISIBLE_BEFORE_LOGO_MS = 3000;
+const CRAWL_START_TOP_VIEWPORTS = 1.05;
 
 const TAGLINE = 'Not a long time ago, in a galaxy not far, far away...';
 const FONT_LOAD_SAMPLE = 'EPISODE MAY 17, 2026 DONALD J. TRUMP TRANSMISSION';
