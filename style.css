@@ -41,7 +41,7 @@ html, body {
   /* Star clusters generated via box-shadow at random-looking positions.
      Two layers (::before small, ::after slightly larger) for parallax-y depth. */
   box-shadow:
-    23vw 14vh #fff, 78vw 9vh #fff, 12vw 82vh #fff, 65vw 47vh #fff,
+    23vw 14vh #fff, 78vw 9vh #fff, 12vw 82vh #fff, 65vw 57vh #fff,
     41vw 23vh #ccc, 89vw 71vh #fff, 4vw 56vh #fff,  53vw 88vh #fff,
     71vw 31vh #fff, 18vw 67vh #ccc, 95vw 18vh #fff, 33vw 5vh  #fff,
     7vw 39vh  #fff, 48vw 73vh #fff, 86vw 54vh #ccc, 27vw 95vh #fff,
@@ -549,6 +549,11 @@ html, body {
     width: 88%;
     font-size: clamp(1.1rem, 5vw, 1.75rem);
     line-height: 1.35;
+  }
+
+  #crawl {
+    top: 100vh;
+    top: 100dvh;
   }
 
   .end-card {

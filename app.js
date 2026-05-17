@@ -19,15 +19,7 @@ function currentCrawlSpeed() {
 
 function currentCrawlLogoOverlapMs() {
   if (window.innerWidth > MOBILE_WIDTH_THRESHOLD) return CRAWL_LOGO_OVERLAP_MS;
-  return MOBILE_TEXT_VISIBLE_BEFORE_LOGO_MS;
-}
-
-function currentInitialCrawlOffset(viewport) {
-  if (window.innerWidth > MOBILE_WIDTH_THRESHOLD) return 0;
-  return Math.round(
-    viewport.clientHeight *
-    Math.max(0, CRAWL_START_TOP_VIEWPORTS - MOBILE_INITIAL_TEXT_TOP_VIEWPORTS)
-  );
+  return MOBILE_CRAWL_LAUNCH_BEFORE_LOGO_MS;
 }
 // Keep already-passed posts in the DOM well beyond the top fade band so
 // reverse scrolling never inserts text while it is still visible.
@@ -60,13 +52,10 @@ const INTRO_TAGLINE_MS = 5000;
 const INTRO_LOGO_MS    = 7500;
 const INTRO_GAP_MS     = 300;
 // The crawl element appears partway through the logo recession.
-// On mobile, the crawl launches exactly this many milliseconds before the
-// logo ends, and starts with an initial offset so the first line is already
-// visible near the bottom of the viewport.
+// On mobile, the crawl starts at the bottom edge and launches early enough
+// that it is already visibly moving around 3s before the logo is gone.
 const CRAWL_LOGO_OVERLAP_MS = 6600;
-const MOBILE_TEXT_VISIBLE_BEFORE_LOGO_MS = 3000;
-const CRAWL_START_TOP_VIEWPORTS = 1.05;
-const MOBILE_INITIAL_TEXT_TOP_VIEWPORTS = 0.88;
+const MOBILE_CRAWL_LAUNCH_BEFORE_LOGO_MS = 4500;
 
 const TAGLINE = 'Not a long time ago, in a galaxy not far, far away...';
 const FONT_LOAD_SAMPLE = 'EPISODE MAY 17, 2026 DONALD J. TRUMP TRANSMISSION';
@@ -605,7 +594,7 @@ function startCrawl(posts) {
   let heights = measureCrawlItems(items);
   let prefix = buildPrefixSums(heights, postGapPx);
   let totalHeight = prefix[prefix.length - 1];
-  let displayOffset = currentInitialCrawlOffset(viewport);
+  let displayOffset = 0;
   let wheelRemainder = 0;
   let renderedStart = -1;
   let renderedEnd = -1;
