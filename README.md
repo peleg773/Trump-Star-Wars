@@ -32,7 +32,7 @@ Then open `http://localhost:8000` in a browser. Any static file server works.
 
 ## A few implementation notes
 
-**Filtering.** The archive includes a lot that doesn't belong in a movie crawl. [app.js](app.js) drops anything with an attached video, anything that looks like a retweet (`RT ...`), and anything containing a link or bare URL. Images stay, but only same-origin or data/blob URLs are embedded by default — see `EMBED_REMOTE_IMAGES` if you want to change that.
+**Filtering.** The archive includes a lot that doesn't belong in a movie crawl. [app.js](app.js) drops anything with an attached video, anything that looks like a retweet (`RT ...`), and anything containing a link or bare URL. The rendered crawl is text-only; attached images and other non-text media are ignored.
 
 **Sentence splitting.** Posts are broken into sentences so each one can be laid out as its own paragraph. `Intl.Segmenter` does the heavy lifting where available, with a regex fallback that protects abbreviations like `U.S.`, `D.C.`, and `J. TRUMP` from being split mid-name.
 
@@ -45,4 +45,3 @@ Then open `http://localhost:8000` in a browser. Any static file server works.
 ## Caveats
 
 - The archive URL is a third-party endpoint; if CNN moves or removes it, the page will show "TRANSMISSION FAILED". Point `ARCHIVE_URL` at a local copy to keep it working offline.
-- Remote images are blocked by default to avoid mixed-content and hotlinking issues. Flip `EMBED_REMOTE_IMAGES` to `true` if you're fine with that.

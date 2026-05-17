@@ -43,9 +43,7 @@ const TOUCH_FLICK_MAX_PX_S = 4200; // cap on flick momentum velocity
 const TOUCH_FLICK_DECAY = 4.5;     // momentum decay rate per second
 const TOUCH_FLICK_MIN_VELOCITY = 40;
 const MIN_TEXT_CHARS   = 1;
-const MAX_IMAGES       = 4;
 const FETCH_TIMEOUT_MS = 12000;
-const EMBED_REMOTE_IMAGES = false;
 // Toggle the orange highlight on trailing Trump signatures ("DJT",
 // "DONALD J. TRUMP", etc.). Flip to false to render those names in the
 // default crawl yellow.
@@ -60,14 +58,13 @@ const INTRO_GAP_MS     = 300;
 // the first line takes ~1–2 s to clear the screen edge depending on
 // viewport height; we need that lead time to baked into the overlap.
 const CRAWL_LOGO_OVERLAP_MS = 6600;
-const CRAWL_MOBILE_DESKTOP_DIFF = 0;
+const CRAWL_MOBILE_DESKTOP_DIFF = 10000;
 const MOBILE_CRAWL_LOGO_OVERLAP_MS = CRAWL_LOGO_OVERLAP_MS - CRAWL_MOBILE_DESKTOP_DIFF;
 
 const TAGLINE = 'Not a long time ago, in a galaxy not far, far away...';
 const FONT_LOAD_SAMPLE = 'EPISODE MAY 17, 2026 DONALD J. TRUMP TRANSMISSION';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm|m4v)(\?|$|#)/i;
-const IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp)(\?|$|#)/i;
 
 /* ---------- Helpers ---------- */
 
@@ -281,19 +278,7 @@ const SIGNATURE_END_RE =
 function classifyMedia(url) {
   if (typeof url !== 'string') return 'other';
   if (VIDEO_EXT_RE.test(url)) return 'video';
-  if (IMAGE_EXT_RE.test(url)) return 'image';
   return 'other';
-}
-
-function canEmbedImage(url) {
-  if (EMBED_REMOTE_IMAGES) return true;
-
-  try {
-    const u = new URL(url, window.location.href);
-    return u.origin === window.location.origin || u.protocol === 'data:' || u.protocol === 'blob:';
-  } catch {
-    return false;
-  }
 }
 
 const DATE_FMT = new Intl.DateTimeFormat('en-US', {
@@ -354,15 +339,12 @@ async function fetchAndPrepare() {
     if (isRetweet(text) || hasLink(rawContent, text)) continue;
     if (text.length < MIN_TEXT_CHARS) continue;
 
-    const images = media.filter(u => classifyMedia(u) === 'image' && canEmbedImage(u));
-
     out.push({
       id: r.id,
       url: typeof r.url === 'string' && r.url ? r.url : '',
       dateLine: formatDateLine(r.created_at),
       body: text,
-      sentences: splitSentences(text),
-      images: images.slice(0, MAX_IMAGES)
+      sentences: splitSentences(text)
     });
   }
 
@@ -450,29 +432,6 @@ function makePostEl(post) {
     body.appendChild(p);
   }
   section.appendChild(body);
-
-  if (post.images.length) {
-    const grid = document.createElement('div');
-    grid.className = `media-grid n${Math.min(post.images.length, MAX_IMAGES)}`;
-    for (const url of post.images) {
-      const img = document.createElement('img');
-      img.src = url;
-      img.alt = '';
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      img.addEventListener('error', () => {
-        img.remove();
-        const count = grid.querySelectorAll('img').length;
-        if (count === 0) {
-          grid.remove();
-        } else {
-          grid.className = `media-grid n${Math.min(count, MAX_IMAGES)}`;
-        }
-      });
-      grid.appendChild(img);
-    }
-    section.appendChild(grid);
-  }
 
   return section;
 }
