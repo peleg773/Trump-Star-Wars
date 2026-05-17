@@ -60,7 +60,7 @@ const INTRO_GAP_MS     = 300;
 // the first line takes ~1–2 s to clear the screen edge depending on
 // viewport height; we need that lead time to baked into the overlap.
 const CRAWL_LOGO_OVERLAP_MS = 6600;
-const CRAWL_MOBILE_DESKTOP_DIFF = 5500;
+const CRAWL_MOBILE_DESKTOP_DIFF = 0;
 const MOBILE_CRAWL_LOGO_OVERLAP_MS = CRAWL_LOGO_OVERLAP_MS - CRAWL_MOBILE_DESKTOP_DIFF;
 
 const TAGLINE = 'Not a long time ago, in a galaxy not far, far away...';
